@@ -26,8 +26,10 @@ Required:
   - --project-dir0 Absolute path for node0 and --project-dir1 for node1
 
 Notes:
-  - Assumes passwordless SSH is configured.
-  - If your NIC is not eth0, pass --iface <name> (example: ens3).
+  - node0 can be the machine you run this script from; it will be detected and
+    run locally (no SSH needed for rank 0).
+  - node1 requires passwordless SSH.
+  - If your NIC is not eth0, pass --iface <name> (example: bond0).
 EOF
 }
 
@@ -88,6 +90,18 @@ if [[ -z "$PROJECT_DIR0" || -z "$PROJECT_DIR1" ]]; then
   exit 1
 fi
 
+# Determine if node0 is the local machine so we can skip SSH for rank 0.
+# We extract just the hostname/ip part from user@host or plain host.
+node0_host="${NODE0#*@}"
+local_host="$(hostname)"
+local_host_s="$(hostname -s)"
+node0_is_local=false
+if [[ "$node0_host" == "$local_host" || "$node0_host" == "$local_host_s" || \
+      "$node0_host" == "localhost" || "$node0_host" == "127.0.0.1" ]]; then
+  node0_is_local=true
+  echo "Detected node0 ($NODE0) is the local machine; rank 0 will run directly."
+fi
+
 TS="$(date +%Y%m%d_%H%M%S)"
 LOG_DIR0="$PROJECT_DIR0/logs"
 LOG_DIR1="$PROJECT_DIR1/logs"
@@ -108,17 +122,34 @@ RUN1_CMD="cd '$PROJECT_DIR1' && mkdir -p logs && \
   --size-mb ${SIZE_MB} --warmup ${WARMUP} --iters ${ITERS} | tee '${LOG1}'"
 
 echo "== Building on node0: ${NODE0} =="
-ssh "$NODE0" "$BUILD0_CMD"
+if $node0_is_local; then
+  eval "$BUILD0_CMD"
+else
+  ssh "$NODE0" "$BUILD0_CMD"
+fi
 
 echo "== Building on node1: ${NODE1} =="
 ssh "$NODE1" "$BUILD1_CMD"
 
 echo "== Launching rank 0 on ${NODE0} =="
-ssh "$NODE0" "$RUN0_CMD" &
+mkdir -p "$LOG_DIR0"
+if $node0_is_local; then
+  eval "$RUN0_CMD" &
+else
+  ssh "$NODE0" "$RUN0_CMD" &
+fi
 PID0=$!
 
-# Small delay so rank0 starts listener before rank1 tries to connect.
-sleep 1
+# Wait until rank 0 is actually listening on the bootstrap port (up to 30s).
+echo "Waiting for rank 0 to open port ${PORT}..."
+for i in $(seq 1 30); do
+  if $node0_is_local; then
+    ss -ltn 2>/dev/null | grep -q ":${PORT}" && break
+  else
+    ssh "$NODE0" "ss -ltn 2>/dev/null | grep -q ':${PORT}'" 2>/dev/null && break
+  fi
+done
+echo "Rank 0 is ready."
 
 echo "== Launching rank 1 on ${NODE1} =="
 ssh "$NODE1" "$RUN1_CMD" &

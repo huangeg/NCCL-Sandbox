@@ -39,17 +39,17 @@ cd /path/to/NCCL-Sandbox
 chmod +x run_nccl_send_recv_2node.sh
 
 ./run_nccl_send_recv_2node.sh \
-	--node0 gehuang@goofy-1 \
-	--node1 gehuang@goofy-2 \
-	--node0-ip 10.129.96.44 \
-	--project-dir /home/gehuang/projects/NCCL-Sandbox \
-	--gpu0 0 \
-	--gpu1 0 \
-	--size-mb 64 \
-	--warmup 5 \
-	--iters 20 \
-	--port 50050 \
-	--iface bond0
+  --node0 gehuang@goofy-1 \
+  --node1 gehuang@goofy-2 \
+  --node0-ip 10.129.96.44 \
+  --project-dir /home/gehuang/projects/NCCL-Sandbox \
+  --gpu0 0 \
+  --gpu1 0 \
+  --size-mb 64 \
+  --warmup 5 \
+  --iters 20 \
+  --port 50050 \
+  --iface bond0
 ```
 
 If the repository path is different on each node, use:
