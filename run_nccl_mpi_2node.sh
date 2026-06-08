@@ -132,11 +132,20 @@ ssh_cmd() {
 
 BUILD_CMD="cd '{}' && make nccl_mpi_2node 2>&1 | tail -5"
 
+# Detect whether node0 is the local machine by comparing all local IPs against NODE0_IP.
+node0_is_local=false
+local_ips="$(hostname -I 2>/dev/null) 127.0.0.1 localhost $(hostname) $(hostname -s)"
+for addr in $local_ips; do
+  if [[ "$addr" == "${NODE0_IP}" || "$addr" == "${NODE0#*@}" ]]; then
+    node0_is_local=true
+    break
+  fi
+done
+
 if [[ "$NO_BUILD" == false ]]; then
   echo "── Building on node0 (${NODE0}) ──"
   node0_build_cmd="${BUILD_CMD/\{\}/$PROJECT_DIR0}"
-  if [[ "${NODE0#*@}" == "$(hostname)" || "${NODE0#*@}" == "$(hostname -s)" || \
-        "${NODE0#*@}" == "localhost" || "${NODE0#*@}" == "127.0.0.1" ]]; then
+  if [[ "$node0_is_local" == true ]]; then
     bash -c "$node0_build_cmd"
   else
     ssh_cmd "$NODE0" "bash -c \"${node0_build_cmd}\""
